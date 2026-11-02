@@ -34,7 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
                "  kimi-agent \"fix the failing tests\"      # one-shot task\n"
                "  git diff | kimi-agent \"review this\"     # piped input\n"
                "  kimi-agent -p ollama -m qwen3:8b        # local model\n"
-               "  kimi-agent -c                           # continue the last session",
+               "  kimi-agent -c                           # continue the last session\n"
+               "  kimi-agent --gui                        # open the desktop app",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("prompt", nargs="*", help="task to run; omit to start an interactive session")
@@ -72,6 +73,16 @@ def build_parser() -> argparse.ArgumentParser:
                           help="continue the most recent session")
     sessions.add_argument("-r", "--resume", metavar="ID", help="resume a saved session by id (or prefix)")
     sessions.add_argument("--list-sessions", action="store_true", help="list saved sessions and exit")
+
+    desktop = parser.add_argument_group("desktop app")
+    desktop.add_argument("--gui", action="store_true", help="open the desktop app (a window in your browser)")
+    desktop.add_argument("--no-browser", action="store_true",
+                         help="with --gui: print a sign-in link instead of opening a window")
+    desktop.add_argument("--port", type=int, help="with --gui: port of the local server (default: 41753)")
+    desktop.add_argument("--install-shortcuts", action="store_true",
+                         help="add the desktop app to the Start menu/Applications and the desktop, then exit")
+    desktop.add_argument("--remove-shortcuts", action="store_true", help="remove those shortcuts and exit")
+    desktop.add_argument("--quit-gui", action="store_true", help="close the running desktop app and exit")
 
     other = parser.add_argument_group("other")
     other.add_argument("--config", metavar="FILE", help="additional config file")
@@ -208,6 +219,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.init_config:
         return init_config(default_data_dir())
+    if args.quit_gui or args.install_shortcuts or args.remove_shortcuts:
+        from .gui.launcher import desktop_command
+
+        return desktop_command(args, overrides_from_args(args))
+    if args.gui or args.no_browser:
+        from .gui import run_gui
+
+        overrides = overrides_from_args(args)
+        overrides["workdir"] = args.workdir or str(Path.cwd())
+        return run_gui(overrides, args.config, port=args.port, open_browser=not args.no_browser,
+                       use_mcp=not args.no_mcp)
 
     try:
         settings, warnings = load_settings(overrides_from_args(args), args.config)

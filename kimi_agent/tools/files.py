@@ -512,7 +512,8 @@ def _search_with_rg(rg: str, ctx: ToolContext, target: Path, pattern: str, glob:
     display_target = ctx.display(target)
     cmd += ["--regexp", pattern, "--", display_target]
     try:
-        proc = subprocess.run(cmd, cwd=ctx.cwd, capture_output=True, text=True, errors="replace", timeout=60)
+        proc = subprocess.run(cmd, cwd=ctx.cwd, capture_output=True, text=True, errors="replace", timeout=60,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         raise ToolError("Search timed out after 60s; narrow the path or pattern.") from None
     if proc.returncode == 1:

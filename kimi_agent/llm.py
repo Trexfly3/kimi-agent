@@ -5,12 +5,14 @@ from __future__ import annotations
 import ast
 import json
 import logging
+import queue
 import random
 import re
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 import openai
@@ -18,6 +20,82 @@ import openai
 log = logging.getLogger("kimi_agent.llm")
 
 Callback = Callable[[str], None]
+T = TypeVar("T")
+_SLICE = 0.1  # how often a waiting thread wakes up so it can be interrupted
+
+
+def _interruptible(fn: Callable[[], T], cleanup: Callable[[T], None] | None = None) -> T:
+    """Run a blocking network call in a helper thread and wait for it in short slices.
+
+    A thread blocked in a socket read cannot be interrupted by the desktop app's Stop button (an async
+    KeyboardInterrupt only fires between Python bytecodes), so the wait happens here instead. If the wait is
+    interrupted, ``cleanup`` is applied to the result once the abandoned call finishes.
+    """
+    box: dict[str, Any] = {}
+    done = threading.Event()
+    lock = threading.Lock()
+
+    def target() -> None:
+        try:
+            box["value"] = fn()
+        except BaseException as exc:  # handed to the waiting thread
+            box["error"] = exc
+        with lock:
+            done.set()
+            abandoned = box.get("abandoned", False)
+        if abandoned and cleanup is not None and "value" in box:
+            try:
+                cleanup(box["value"])
+            except Exception:
+                log.debug("cleanup after an interrupted request failed", exc_info=True)
+
+    threading.Thread(target=target, name="kimi-agent-request", daemon=True).start()
+    try:
+        while not done.wait(_SLICE):
+            pass
+    except BaseException:
+        with lock:
+            box["abandoned"] = not done.is_set()
+        if not box["abandoned"] and cleanup is not None and "value" in box:
+            cleanup(box["value"])
+        raise
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
+def _pumped(items: Iterable[T]) -> Iterator[T]:
+    """Iterate ``items`` in a helper thread (see ``_interruptible``), yielding them in this thread."""
+    pipe: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def target() -> None:
+        try:
+            for item in items:
+                pipe.put(("item", item))
+        except BaseException as exc:
+            pipe.put(("error", exc))
+        else:
+            pipe.put(("end", None))
+
+    threading.Thread(target=target, name="kimi-agent-stream", daemon=True).start()
+    while True:
+        try:
+            kind, value = pipe.get(timeout=_SLICE)
+        except queue.Empty:
+            continue
+        if kind == "item":
+            yield value
+        elif kind == "error":
+            raise value
+        else:
+            return
+
+
+def _close_quietly(stream: Any) -> None:
+    try:
+        stream.close()
+    except Exception:
+        pass
 
 
 class LLMError(Exception):
@@ -633,7 +711,9 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         on_content: Callback | None = None,
         on_reasoning: Callback | None = None,
+        on_retry: Callback | None = None,
     ) -> LLMResponse:
+        """Get the model's next reply. ``on_retry`` receives a short status line before each retry."""
         schemas = list(tools or [])
         attempt = 0
         while True:
@@ -646,13 +726,14 @@ class LLMClient:
                     continue
                 if action == "backoff" and attempt < self.settings.max_retries and not emitted[0]:
                     attempt += 1
-                    self._sleep(attempt, exc)
+                    reason = "Rate limited" if exc.status_code == 429 else f"Server error {exc.status_code}"
+                    self._sleep(attempt, exc, on_retry, reason)
                     continue
                 raise self._friendly(exc) from exc
             except (openai.APIConnectionError, httpx.TransportError) as exc:
                 if attempt < self.settings.max_retries and not emitted[0]:
                     attempt += 1
-                    self._sleep(attempt, None)
+                    self._sleep(attempt, None, on_retry, "Connection problem")
                     continue
                 kind = "timed out" if isinstance(exc, (openai.APITimeoutError, httpx.TimeoutException)) else "failed"
                 raise LLMError(f"Connection to {self.settings.base_url} {kind}: {exc}") from exc
@@ -662,7 +743,7 @@ class LLMClient:
                     raise ContextOverflowError(text) from exc
                 if attempt < self.settings.max_retries and not emitted[0]:
                     attempt += 1
-                    self._sleep(attempt, None)
+                    self._sleep(attempt, None, on_retry, "API error")
                     continue
                 raise LLMError(f"API error from {self.settings.base_url}: {text}") from exc
 
@@ -675,7 +756,8 @@ class LLMClient:
             raise LLMError(f"Could not list models: {exc}") from exc
 
     # -- internals
-    def _sleep(self, attempt: int, exc: openai.APIStatusError | None) -> None:
+    def _sleep(self, attempt: int, exc: openai.APIStatusError | None, on_retry: Callback | None = None,
+               reason: str = "Request failed") -> None:
         delay = min(60.0, 2.0 ** attempt + random.random())
         if exc is not None and exc.response is not None:
             retry_after = exc.response.headers.get("retry-after")
@@ -685,7 +767,15 @@ class LLMClient:
             except ValueError:
                 pass
         log.info("retrying in %.1fs (attempt %d)", delay, attempt)
-        time.sleep(delay)
+        if on_retry is not None:
+            on_retry(f"{reason}; retrying (attempt {attempt} of {self.settings.max_retries})…")
+        self._wait(delay)
+
+    @staticmethod
+    def _wait(seconds: float) -> None:
+        deadline = time.monotonic() + seconds
+        while (left := deadline - time.monotonic()) > 0:  # short naps keep the thread interruptible
+            time.sleep(min(_SLICE, left))
 
     @staticmethod
     def _error_text(exc: openai.APIStatusError) -> str:
@@ -785,7 +875,7 @@ class LLMClient:
 
         stream_filter = StreamFilter(content_cb, reasoning_cb)
         if not self.settings.stream:
-            response = self.client.chat.completions.create(**params)
+            response = _interruptible(lambda: self.client.chat.completions.create(**params))
             if not response.choices:
                 raise LLMError(f"The API returned no choices: {response}")
             choice = response.choices[0]
@@ -803,7 +893,8 @@ class LLMClient:
 
         if self.stream_options_ok:
             params["stream_options"] = {"include_usage": True}
-        stream = self.client.chat.completions.create(stream=True, **params)
+        stream = _interruptible(lambda: self.client.chat.completions.create(stream=True, **params),
+                                cleanup=_close_quietly)
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
         reasoning_key: str | None = None
@@ -811,7 +902,7 @@ class LLMClient:
         finish_reason: str | None = None
         usage: Usage | None = None
         try:
-            for chunk in stream:
+            for chunk in _pumped(stream):
                 chunk_usage = Usage.from_any(getattr(chunk, "usage", None))
                 if chunk_usage:
                     usage = chunk_usage
@@ -837,10 +928,7 @@ class LLMClient:
                 for tc in delta.tool_calls or []:
                     self._accumulate_call(calls, tc)
         finally:
-            try:
-                stream.close()
-            except Exception:
-                pass
+            _close_quietly(stream)
         stream_filter.flush()
         raw_calls = [calls[i] for i in sorted(calls)]
         return self._finalize("".join(content_parts), "".join(reasoning_parts), reasoning_key, raw_calls,

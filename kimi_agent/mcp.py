@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -73,10 +74,13 @@ class _Transport:
         return request_id, waiter
 
     def _wait(self, request_id: int, waiter: _Waiter, method: str, timeout: float) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
         try:
-            if not waiter.event.wait(timeout):
-                self._cancel(request_id, "timeout")
-                raise MCPError(f"MCP server '{self.name}' did not answer {method} within {timeout:g}s")
+            # Short slices keep the wait interruptible by an async KeyboardInterrupt (the GUI's Stop button).
+            while not waiter.event.wait(min(0.2, max(deadline - time.monotonic(), 0))):
+                if time.monotonic() >= deadline:
+                    self._cancel(request_id, "timeout")
+                    raise MCPError(f"MCP server '{self.name}' did not answer {method} within {timeout:g}s")
         except KeyboardInterrupt:
             self._cancel(request_id, "interrupted by the user")
             raise
@@ -183,7 +187,8 @@ class StdioTransport(_Transport):
         full_env = {**os.environ, **{k: str(v) for k, v in env.items()}}
         kwargs: dict[str, Any] = {}
         if IS_WINDOWS:
-            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+                                       | getattr(subprocess, "CREATE_NO_WINDOW", 0))
         else:
             kwargs["start_new_session"] = True  # Ctrl+C in the terminal must not kill MCP servers
         try:

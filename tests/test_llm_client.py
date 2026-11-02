@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ctypes
 import json
+import threading
+import time
 
 import pytest
 from fakeserver import FakeOpenAI
@@ -16,7 +19,7 @@ USER = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi", 
 def client_for(settings, fake) -> LLMClient:
     settings.base_url = fake.base_url
     client = LLMClient(settings)
-    client._sleep = lambda attempt, exc: None  # no real backoff delays in tests
+    client._sleep = lambda *args: None  # no real backoff delays in tests
     return client
 
 
@@ -188,6 +191,46 @@ def test_retries_transient_errors(settings):
     with FakeOpenAI(replies) as fake:
         response, _, _ = collect(client_for(settings, fake))
         assert response.content == "finally" and len(fake.requests) == 3
+
+
+def test_retries_report_status(settings):
+    settings.max_retries = 2
+    replies = [{"status": 503, "error": "overloaded"}, {"status": 429, "error": "slow down"}, {"content": "ok"}]
+    with FakeOpenAI(replies) as fake:
+        settings.base_url = fake.base_url
+        client = LLMClient(settings)
+        waits: list[float] = []
+        client._wait = waits.append
+        status: list[str] = []
+        response = client.complete(USER, TOOLS, on_retry=status.append)
+    assert response.content == "ok" and len(waits) == 2 and all(w >= 1 for w in waits)
+    assert status == ["Server error 503; retrying (attempt 1 of 2)…", "Rate limited; retrying (attempt 2 of 2)…"]
+
+
+def test_waiting_for_a_slow_model_can_be_interrupted(settings):
+    """The desktop app stops a turn by raising KeyboardInterrupt in the agent thread; a request that is still
+    waiting for the server must not delay that until the server answers."""
+    def slow(body, fake):
+        time.sleep(3)
+        return {"content": "too late"}
+
+    with FakeOpenAI(handler=slow) as fake:
+        client = client_for(settings, fake)
+        outcome: dict[str, float] = {}
+
+        def run() -> None:
+            try:
+                client.complete(USER, TOOLS)
+            except KeyboardInterrupt:
+                outcome["interrupted"] = time.monotonic()
+
+        worker = threading.Thread(target=run)
+        worker.start()
+        time.sleep(0.4)
+        start = time.monotonic()
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(worker.ident), ctypes.py_object(KeyboardInterrupt))
+        worker.join(5)
+    assert "interrupted" in outcome and outcome["interrupted"] - start < 1.0
 
 
 def test_retries_exhausted(settings):

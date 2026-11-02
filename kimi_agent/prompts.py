@@ -83,7 +83,8 @@ the context it needs: it cannot see this conversation."""
 
 def _run(args: list[str], cwd: Path) -> str:
     try:
-        result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=3, check=False)
+        result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=3, check=False,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError):
         return ""
     return result.stdout.strip() if result.returncode == 0 else ""
