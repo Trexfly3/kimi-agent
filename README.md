@@ -8,8 +8,10 @@ similar servers. Give it a task and it plans, runs shell commands, reads and edi
 and reads the web, controls the mouse and keyboard, calls MCP servers and delegates sub-tasks. It keeps going
 until the job is done.
 
-Use it as an interactive terminal app, as a one-shot command in scripts and CI, or as a Python library with
-your own tools.
+Use it as a desktop app modeled on Claude's, as an interactive terminal app, as a one-shot command in scripts and
+CI, or as a Python library with your own tools.
+
+![The Kimi Agent desktop app asks before it runs a command while working through its plan](docs/screenshot.png)
 
 > [!WARNING]
 > Kimi Agent has **full access to your computer**: it runs commands and changes files with your user's
@@ -18,6 +20,7 @@ your own tools.
 
 - [Features](#features)
 - [Install](#install)
+- [Desktop app](#desktop-app)
 - [Quick start](#quick-start)
 - [Providers and models](#providers-and-models)
 - [Interactive sessions](#interactive-sessions)
@@ -35,6 +38,8 @@ your own tools.
 
 ## Features
 
+- **Desktop app**: a chat window modeled on Claude's, with live plans, approval cards and attachments. One-line
+  installers for Windows, macOS and Linux need no administrator rights and no Python.
 - **Agent loop**: streaming answers and thinking, several tool calls per step, automatic retries, a step limit,
   and Ctrl+C to interrupt at any moment.
 - **Any OpenAI-compatible model**: 15 provider presets, including Kimi K3 with its 1M-token context and
@@ -53,13 +58,42 @@ your own tools.
 
 ## Install
 
-Requires Python 3.10 or newer. Kimi Agent is developed and tested on Linux. The code also handles macOS and
-Windows (PowerShell), but those platforms have had less testing.
+Kimi Agent is developed and tested on Linux. The code also handles macOS and Windows (PowerShell), but those
+platforms have had less testing.
+
+### One-line install (desktop app)
+
+**Windows:** open PowerShell (Start menu, type "PowerShell") and paste:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/Trexfly3/kimi-agent/main/install.ps1 | iex"
+```
+
+**macOS and Linux:** open a terminal and paste:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/Trexfly3/kimi-agent/main/install.sh | sh
+```
+
+The installer sets up [uv](https://docs.astral.sh/uv/), a small tool that installs Python apps. uv downloads Kimi
+Agent with its own copy of Python. The installer then adds **Kimi Agent** to the Start menu, the Applications
+folder or the applications menu, and to the desktop, and opens it. It needs no administrator rights. It also
+installs the `kimi-agent` terminal command.
+
+- **Update:** run the same command again.
+- **Uninstall:** on Windows, use Settings > Apps > Installed apps > Kimi Agent > Uninstall. On macOS and Linux,
+  run `curl -LsSf https://raw.githubusercontent.com/Trexfly3/kimi-agent/main/install.sh | sh -s -- --uninstall`.
+  Your settings and conversations stay in `~/.kimi-agent`; delete that folder to remove them too.
+
+### With pipx or pip
+
+Requires Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/Trexfly3/kimi-agent.git
 cd kimi-agent
 pipx install .            # or: pip install .
+kimi-agent --install-shortcuts   # optional: add the desktop app to your applications menu and desktop
 ```
 
 Optional extras, e.g. `pipx install '.[all]'`:
@@ -70,6 +104,56 @@ Optional extras, e.g. `pipx install '.[all]'`:
 | `docs` | PDF reading (pypdf) |
 | `all` | both of the above |
 | `dev` | pytest and ruff, for development |
+
+## Desktop app
+
+The desktop app is a chat window modeled on Claude's:
+
+- A sidebar lists your conversations. Each one can be renamed, exported as Markdown or deleted.
+- Answers stream in, and the model's thinking can be expanded.
+- Every action the agent takes appears as a row you can open to see its input and output, and its plan updates
+  live.
+- Before a risky action, an approval card asks you to **Allow once**, **Always allow** or **Deny**, or to tell the
+  agent what to do instead.
+- The bar under the message box picks the working folder, the permission mode (Ask first, Auto or Full access)
+  and the model.
+- Add files and images with **+**, by pasting or by dragging them in.
+
+On first start, the app asks for your provider and API key. It saves the key in `~/.kimi-agent/.env`, readable
+only by you. Settings has the provider and model, reasoning effort, web access, computer use (screen, mouse and
+keyboard), permissions, and a system, light or dark theme.
+
+Open it from its shortcut, or from a terminal:
+
+```bash
+kimi-agent --gui     # works in the current folder
+kimi-agent-gui       # like the shortcut: starts in your home folder
+```
+
+How it works:
+
+- **The window.** Kimi Agent runs a small web server on `127.0.0.1` (port 41753, or a free one if that is taken).
+  It shows the server in an app window of Microsoft Edge, Google Chrome, Brave or Chromium, without tabs or an
+  address bar. If none of these is installed, it uses your default browser. To use another Chromium-based
+  browser, set `KIMI_AGENT_BROWSER` to its path.
+- **Access.** Only windows opened through a single-use sign-in link get in, and only when the browser opens the
+  link itself (from the shortcut, or pasted into the address bar), not when a web page does. Each window also gets
+  a private key, so other web pages on `127.0.0.1` can't use the app even though browsers share cookies between
+  local ports. The app answers only at `127.0.0.1`, not `localhost`. It refuses requests from other websites and,
+  on Linux, connections from other users' programs.
+- **Opening it again.** While the app runs, opening it again opens another window on the same conversation.
+- **Quitting.** The app quits by itself two minutes after its last window closes. If a task is still running, it
+  waits for the task to finish, for up to 30 minutes. `kimi-agent --quit-gui` closes it at once. With
+  `--no-browser`, it runs until you press Ctrl+C.
+- **Logs** are in `~/.kimi-agent/logs`.
+
+| Option | |
+|---|---|
+| `--gui` | open the desktop app |
+| `--no-browser` | print a sign-in link instead of opening a window |
+| `--port N` | port of the local server |
+| `--install-shortcuts`, `--remove-shortcuts` | add or remove the Start menu or Applications entry and the desktop shortcut |
+| `--quit-gui` | close the running desktop app |
 
 ## Quick start
 
@@ -520,6 +604,9 @@ mcp.py                    MCP client (stdio, Streamable HTTP, SSE)
 prompts.py                system prompt and AGENTS.md loading
 session.py, plugins.py    saved conversations; custom tool loading
 config.py, ui.py          settings and provider presets; terminal and JSON output
+gui/                      desktop app: local server, API and event stream (server.py, app.py, webui.py), window
+                          launcher and shortcuts (launcher.py, shortcuts.py), Markdown (render.py), web page (static/)
+install.sh, install.ps1   one-line installers (uv, Kimi Agent, shortcuts; update and uninstall)
 ```
 
 At each step the agent sends the conversation and the tool definitions to the model and streams its reply. Each
@@ -535,3 +622,7 @@ pip install -e '.[dev]'
 pytest           # uses a local fake OpenAI server: no API key or network needed
 ruff check .
 ```
+
+`scripts/make_icons.py` regenerates the app icons in `kimi_agent/gui/static/`. It needs Pillow:
+`uv run --no-project --with pillow python scripts/make_icons.py`. To try the installers on a branch, set
+`KIMI_AGENT_REF=<branch>` (or `KIMI_AGENT_SOURCE` to a zip URL) before running them.

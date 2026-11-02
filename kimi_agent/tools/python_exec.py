@@ -10,16 +10,22 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from kimi_agent.tools.base import Tool, ToolContext, ToolError, ToolResult, tool, truncate_middle
-from kimi_agent.tools.shell import IS_WINDOWS, command_env
+from kimi_agent.tools.shell import IS_WINDOWS, NO_WINDOW, POLL_INTERVAL, command_env
 
 WORKER = Path(__file__).with_name("_pyworker.py")
 
 
 def default_python() -> str:
-    return shutil.which("python3") or shutil.which("python") or sys.executable
+    for name in ("python3", "python"):
+        found = shutil.which(name)
+        # On Windows, WindowsApps\python*.exe may be the Microsoft Store "install Python" stub.
+        if found and not (IS_WINDOWS and "windowsapps" in found.lower()):
+            return found
+    return sys.executable
 
 
 class PythonSession:
@@ -37,7 +43,9 @@ class PythonSession:
         env = command_env()
         env["MPLBACKEND"] = "Agg"
         kwargs: dict[str, object] = {}
-        if not IS_WINDOWS:
+        if IS_WINDOWS:
+            kwargs["creationflags"] = NO_WINDOW
+        else:
             kwargs["start_new_session"] = True
         try:
             self.proc = subprocess.Popen(
@@ -84,7 +92,7 @@ class PythonSession:
                 self._kill()
                 raise ToolError("The Python interpreter died; it will be restarted on the next call.") from None
             try:
-                line = self._responses.get(timeout=timeout)
+                line = self._next_response(timeout)
             except queue.Empty:
                 self._kill()
                 return f"[Timed out after {timeout:g}s; the interpreter was restarted and all state was lost.]", False
@@ -100,6 +108,17 @@ class PythonSession:
             except ValueError:
                 return line, False
             return str(message.get("output", "")), bool(message.get("ok", False))
+
+    def _next_response(self, timeout: float) -> str | None:
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise queue.Empty
+            try:
+                return self._responses.get(timeout=min(POLL_INTERVAL, remaining))
+            except queue.Empty:
+                continue
 
     def _interrupt(self) -> None:
         """Interrupt running code but keep the interpreter state when possible."""

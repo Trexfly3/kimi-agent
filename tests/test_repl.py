@@ -18,7 +18,7 @@ def env(settings, ui, workdir):
     with FakeOpenAI() as fake:
         settings.base_url = fake.base_url
         runtime = Runtime(settings, ui, interactive=True, use_mcp=False)
-        runtime.llm._sleep = lambda attempt, exc: None
+        runtime.llm._sleep = lambda *args: None
         runtime.start()
         try:
             yield SimpleNamespace(repl=Repl(runtime), fake=fake, ui=ui, runtime=runtime, settings=settings)

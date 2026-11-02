@@ -94,9 +94,15 @@ class Agent:
         return self._maybe_compact(force=True, focus=focus)
 
     # -- running
-    def run(self, content: Any) -> str:
-        """Run one user request to completion and return the final answer."""
+    def run(self, content: Any, meta: dict[str, Any] | None = None) -> str:
+        """Run one user request to completion and return the final answer.
+
+        ``meta`` adds private keys (``_``-prefixed, never sent to the model) to the user message, e.g. the
+        text a GUI displayed for it.
+        """
         self._append_user(content, turn=True)
+        if meta:
+            self.messages[-1].update({k: v for k, v in meta.items() if k.startswith("_")})
         if not self.subagent and self.ctx.file_history is not None:
             self.ctx.file_history.begin_turn()
             self.messages[-1]["_file_turn"] = self.ctx.file_history.turn
@@ -173,7 +179,7 @@ class Agent:
             self.ui.begin_response()
             try:
                 response = self.llm.complete(self.messages, schemas, on_content=self.ui.stream_content,
-                                             on_reasoning=self.ui.stream_reasoning)
+                                             on_reasoning=self.ui.stream_reasoning, on_retry=self.ui.start_spinner)
             except ContextOverflowError:
                 self.ui.end_response()
                 if overflowed:

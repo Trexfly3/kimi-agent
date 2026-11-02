@@ -20,6 +20,9 @@ from typing import Any
 from kimi_agent.tools.base import Tool, ToolContext, ToolError, ToolResult, tool, truncate_middle
 
 IS_WINDOWS = os.name == "nt"
+# Windows: run console programs without opening a console window (matters when the GUI runs under pythonw).
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+POLL_INTERVAL = 0.2  # blocking waits are split into short slices so Stop (an async KeyboardInterrupt) lands fast
 CWD_MARKER = "__KIMI_AGENT_CWD__"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 
@@ -95,7 +98,8 @@ def kill_tree(proc: subprocess.Popen[bytes]) -> None:
     """Terminate a process and everything it spawned."""
     try:
         if IS_WINDOWS:
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False,
+                           creationflags=NO_WINDOW)
             return
         try:
             os.killpg(proc.pid, signal.SIGTERM)
@@ -116,7 +120,7 @@ def kill_tree(proc: subprocess.Popen[bytes]) -> None:
 def _popen(argv: list[str], cwd: Path, stdin: int) -> subprocess.Popen[bytes]:
     kwargs: dict[str, Any] = {}
     if IS_WINDOWS:
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW  # type: ignore[attr-defined]
     else:
         kwargs["start_new_session"] = True
     try:
@@ -190,11 +194,18 @@ def execute(argv: list[str], cwd: Path, timeout: float) -> ExecResult:
     reader = threading.Thread(target=_pump, args=(proc.stdout, buffer.write), daemon=True)
     reader.start()
     timed_out = False
+    deadline = time.monotonic() + timeout
     try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        kill_tree(proc)
+        while proc.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                kill_tree(proc)
+                break
+            try:
+                proc.wait(timeout=min(POLL_INTERVAL, remaining))
+            except subprocess.TimeoutExpired:
+                pass
     except KeyboardInterrupt:
         kill_tree(proc)
         raise

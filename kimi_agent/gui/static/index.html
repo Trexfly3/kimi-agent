@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme-pref="__THEME__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="kimi-agent-key" content="__KEY__">
+<title>Kimi Agent</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/pygments.css">
+<script src="/static/theme.js"></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body class="empty loading">
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Conversations">
+    <div class="sb-head">
+      <div class="brand"><img src="/static/icon.svg" alt=""><span>Kimi Agent</span></div>
+      <button class="icon-btn" id="sb-close" title="Close sidebar" data-icon="panel"></button>
+    </div>
+    <button class="new-chat" id="new-chat"><span class="new-plus" data-icon="plus"></span><span>New chat</span></button>
+    <div class="sb-label">Recents</div>
+    <nav class="recents" id="recents"></nav>
+    <div class="sb-foot">
+      <button class="sb-item" id="open-settings"><span data-icon="sliders"></span><span>Settings</span></button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="sb-open" title="Open sidebar" data-icon="panel"></button>
+      <button class="icon-btn" id="new-chat-top" title="New chat" data-icon="edit"></button>
+      <div class="title-wrap"><button class="title-btn" id="title" title="Rename">New chat</button></div>
+      <div class="conn" id="conn" hidden>Reconnecting…</div>
+      <button class="icon-btn" id="menu-btn" title="More" data-icon="more"></button>
+    </header>
+    <div class="banner" id="banner" hidden></div>
+    <section class="scroller" id="scroller">
+      <div class="welcome" id="welcome">
+        <div class="greet"><img src="/static/icon.svg" alt=""><h1 id="greeting">Hello</h1></div>
+        <div class="welcome-slot" id="welcome-slot"></div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="thread" id="thread" aria-live="polite"></div>
+      <div class="tail" id="tail" hidden><span class="spark"></span><span id="tail-text">Thinking…</span><span class="tail-time" id="tail-time"></span></div>
+      <div class="turn-actions" id="turn-actions" hidden>
+        <button class="icon-btn small" id="copy-last" title="Copy response" data-icon="copy"></button>
+        <button class="icon-btn small" id="retry-last" title="Retry" data-icon="retry"></button>
+      </div>
+    </section>
+    <div class="dock" id="dock">
+      <button class="jump" id="jump" title="Scroll to bottom" data-icon="arrowDown" hidden></button>
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="files" id="files"></div>
+        <textarea id="input" rows="1" placeholder="How can I help you today?" aria-label="Message"></textarea>
+        <div class="composer-bar">
+          <div class="bar-left">
+            <button type="button" class="tool-btn" id="attach" title="Add files" data-icon="plus"></button>
+            <input type="file" id="file-input" multiple hidden>
+            <button type="button" class="pill" id="folder-btn" title="Working folder"><span data-icon="folder"></span><span class="pill-text" id="folder-name">Folder</span></button>
+            <button type="button" class="pill" id="approval-btn" title="Permissions"><span data-icon="shield"></span><span class="pill-text" id="approval-name">Auto</span></button>
+          </div>
+          <div class="bar-right">
+            <span class="ctx" id="ctx" hidden></span>
+            <button type="button" class="model-btn" id="model-btn" title="Model"><span id="model-name">Model</span><span data-icon="chevronDown"></span></button>
+            <button type="submit" class="send" id="send" title="Send" data-icon="arrowUp" disabled></button>
+          </div>
+        </div>
+      </form>
+      <div class="disclaimer" id="disclaimer">Kimi Agent can make mistakes and acts on your computer. Check its work.</div>
+    </div>
+  </main>
+</div>
+<div class="drop" id="drop" hidden><div>Drop files to add them to your message</div></div>
+<div id="layer"></div>
+<div class="toasts" id="toasts"></div>
+</body>
+</html>

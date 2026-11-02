@@ -13,7 +13,7 @@ from kimi_agent.runtime import Runtime
 def make_runtime(settings, ui, fake, interactive=False) -> Runtime:
     settings.base_url = fake.base_url
     runtime = Runtime(settings, ui, interactive=interactive, use_mcp=False)
-    runtime.llm._sleep = lambda attempt, exc: None
+    runtime.llm._sleep = lambda *args: None
     runtime.start()
     return runtime
 

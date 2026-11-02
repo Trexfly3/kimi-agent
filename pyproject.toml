@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kimi-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomous computer-use agent for Kimi and any OpenAI-compatible open-source model"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,8 @@ dependencies = [
     "httpx>=0.25",
     "rich>=13.0",
     "prompt_toolkit>=3.0",
+    "markdown-it-py>=2.2",
+    "pygments>=2.13",
     "tomli>=2.0; python_version < '3.11'",
 ]
 
@@ -28,6 +30,9 @@ Issues = "https://github.com/Trexfly3/kimi-agent/issues"
 
 [project.scripts]
 kimi-agent = "kimi_agent.cli:main"
+
+[project.gui-scripts]
+kimi-agent-gui = "kimi_agent.gui:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["kimi_agent"]
