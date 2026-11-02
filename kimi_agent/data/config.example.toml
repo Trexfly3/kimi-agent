@@ -1,0 +1,87 @@
+# Kimi Agent configuration.
+# Location: ~/.kimi-agent/config.toml (or $KIMI_AGENT_HOME/config.toml), or pass --config FILE.
+# Every key can also be set with an environment variable: KIMI_AGENT_<KEY> (e.g. KIMI_AGENT_MODEL).
+# Precedence: command line > environment > --config file > ~/.kimi-agent/config.toml > defaults.
+
+# ---------------------------------------------------------------- model
+# Provider presets: kimi, kimi-cn, kimi-code, openrouter, huggingface, groq, together, fireworks,
+# deepseek, ollama, vllm, sglang, lmstudio, llamacpp, custom (run `kimi-agent --list-providers`).
+provider = "kimi"
+# model = "kimi-k3"                      # default: the preset's model
+# base_url = "https://api.moonshot.ai/v1" # default: the preset's URL
+# api_key = "sk-..."                     # better: KIMI_API_KEY / MOONSHOT_API_KEY in the environment or ~/.kimi-agent/.env
+# temperature = 0.6
+# max_tokens = 32000                     # output token limit per response
+# reasoning_effort = "high"              # sent as-is for models that support it
+# context_window = 1000000               # default: from the preset; used for automatic compaction
+# compact_threshold = 0.8                # compact the history at this fraction of the context window
+# tool_mode = "auto"                     # auto | native | text (text = prompt-based tool calls for servers without tool support)
+# vision = true                          # send images (screenshots, image files) to the model
+# stream = true
+# request_timeout = 600
+# max_retries = 3
+
+# Extra request parameters / headers
+# [extra_body]
+# thinking = { type = "enabled" }
+# [extra_headers]
+# "X-Title" = "kimi-agent"
+
+# ---------------------------------------------------------------- agent behaviour
+# approval: ask  = confirm every command, file write and GUI action
+#           auto = run safe read-only commands and edits inside the working directory automatically (default)
+#           yolo = never ask, except for catastrophic commands
+approval = "auto"
+# Commands that run without asking: prefixes such as "npm run" (allows "npm run build"). Every command in a
+# pipeline or chain must be allowed; commands flagged as dangerous still ask.
+# allow_commands = ["pytest", "npm run", "cargo test"]
+# Regular expressions for commands that are always refused:
+# deny_commands = ["\\bshutdown\\b", "git push .*--force"]
+# max_steps = 100              # tool-calling steps per request before asking to continue
+# max_output_chars = 30000     # tool output sent to the model is truncated beyond this
+# command_timeout = 300        # default run_command timeout in seconds
+# show_reasoning = false       # print the model's thinking
+
+# ---------------------------------------------------------------- tools
+# shell = "/bin/bash"          # default: $SHELL (PowerShell on Windows)
+# python = "/usr/bin/python3"  # interpreter for run_python (default: the one running kimi-agent)
+web = true
+# search_backend = "auto"     # auto | tavily | brave | searxng | duckduckgo  (TAVILY_API_KEY, BRAVE_API_KEY, SEARXNG_URL)
+# kimi_web_search = false     # use Kimi's builtin $web_search (official Kimi API only)
+computer_use = false          # screen + mouse + keyboard control (pip install 'kimi-agent[computer]')
+# computer_auto_screenshot = true
+memory = true                 # persistent memory in ~/.kimi-agent/memory.md
+subagents = true              # allow delegate_task
+# disabled_tools = ["delete_path", "mcp__github__*"]   # glob patterns
+# Custom tools: Python files defining @tool functions (absolute, or relative to the working directory or
+# ~/.kimi-agent), or importable module names. See examples/plugin_project_stats.py.
+# plugins = ["~/.kimi-agent/plugins/project_stats.py", "my_package.agent_tools"]
+
+# ---------------------------------------------------------------- custom providers
+# [providers.my-server]
+# base_url = "http://192.168.1.20:8000/v1"
+# model = "moonshotai/Kimi-K3"
+# api_key_env = "MY_SERVER_KEY"
+# context_window = 131072
+# vision = false
+
+# ---------------------------------------------------------------- MCP servers
+# stdio servers: command + args (+ env, cwd). HTTP servers: url (+ headers).
+# ${VAR} and ${VAR:-default} are expanded from the environment.
+# trust = true skips approval for the server's tools; tools = [...] limits which tools are exposed.
+#
+# [mcp_servers.playwright]
+# command = "npx"
+# args = ["-y", "@playwright/mcp@latest"]
+#
+# [mcp_servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/me/projects"]
+#
+# [mcp_servers.github]
+# url = "https://api.githubcopilot.com/mcp/"
+# headers = { Authorization = "Bearer ${GITHUB_TOKEN}" }
+#
+# [mcp_servers.context7]
+# url = "https://mcp.context7.com/mcp"
+# trust = true

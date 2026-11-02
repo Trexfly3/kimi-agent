@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kimi-agent"
+version = "0.1.0"
+description = "Autonomous computer-use agent for Kimi and any OpenAI-compatible open-source model"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.55.3",
+    "httpx>=0.25",
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+computer = ["pyautogui>=0.9.54", "mss>=9.0", "pillow>=10.0", "pyperclip>=1.8"]
+docs = ["pypdf>=4.0"]
+all = ["kimi-agent[computer,docs]"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Repository = "https://github.com/Trexfly3/kimi-agent"
+Issues = "https://github.com/Trexfly3/kimi-agent/issues"
+
+[project.scripts]
+kimi-agent = "kimi_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kimi_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "I", "SIM", "RUF"]
+ignore = ["E501", "SIM105", "SIM108", "RUF001", "RUF002", "RUF003", "RUF005", "RUF012", "RUF043", "RUF059",
+          "B904", "E731"]

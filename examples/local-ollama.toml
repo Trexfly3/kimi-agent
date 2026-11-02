@@ -1,0 +1,16 @@
+# Run Kimi Agent fully locally with Ollama:
+#
+#   1. Pull a model that supports tool calling:        ollama pull qwen3:8b
+#   2. Start Ollama with a large enough context window (its default is small, and it silently drops
+#      the beginning of longer conversations, including the system prompt and tool definitions):
+#                                                      OLLAMA_CONTEXT_LENGTH=32768 ollama serve
+#   3. Run:                                            kimi-agent --config examples/local-ollama.toml
+#
+# Smaller models are much less reliable at multi-step tool use; prefer the largest model your hardware runs.
+
+provider = "ollama"
+model = "qwen3:8b"
+context_window = 32768        # keep in sync with OLLAMA_CONTEXT_LENGTH: used for automatic compaction
+vision = false                # set to true for vision models such as qwen2.5vl
+# tool_mode = "text"          # for models without native tool calling (prompt-based tool calls)
+# approval = "ask"            # confirm every action while you get to know the model
